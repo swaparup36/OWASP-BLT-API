@@ -1,0 +1,1126 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================
+// CORE USER & AUTH MODELS
+// ============================================
+
+model User {
+  id          Int       @id @default(autoincrement())
+  username    String    @unique @db.VarChar(150)
+  email       String    @unique @db.VarChar(254)
+  firstName   String?   @map("first_name") @db.VarChar(150)
+  lastName    String?   @map("last_name") @db.VarChar(150)
+  password    String    @db.VarChar(128)
+  isActive    Boolean   @default(true) @map("is_active")
+  isStaff     Boolean   @default(false) @map("is_staff")
+  isSuperuser Boolean   @default(false) @map("is_superuser")
+  dateJoined  DateTime  @default(now()) @map("date_joined")
+  lastLogin   DateTime? @map("last_login")
+
+  // Relations
+  token                    Token?
+  wallet                   Wallet?
+  userProfile              UserProfile?
+  adminOrganizations       Organization[]           @relation("AdminOrganizations")
+  managerOrganizations     Organization[]           @relation("ManagerOrganizations")
+  userDomains              Domain[]                 @relation("DomainManagers")
+  issues                   Issue[]                  @relation("IssueCreator")
+  assignedIssues           Issue[]                  @relation("IssueAssignedUser")
+  hunts                    Hunt[]
+  issueScreenshots         IssueScreenshot[]
+  points                   Points[]
+  payments                 Payment[]
+  contributorStats         ContributorStats[]
+  userInvites              Invite[]                 @relation("InvitingUser")
+  invitedBy                Invite[]                 @relation("InvitedUser")
+  ipReports                IP[]                     @relation("IPReporter")
+  activities               Activity[]
+  bids                     Bid[]
+  winnerIssues             Winner[]
+  monitoredDomains         Monitor[]
+  transactions             Transaction[]
+  userInviteFriends        InviteFriend[]
+  userProjectMembers       CompanyProjectMember[]
+  projectContributions     ProjectContribution[]
+  baconEarnings            BaconEarning?
+  bountyClaims             BountyClaim[]
+  createdProjects          Project[]                @relation("ProjectCreator")
+  projects                 ProjectMember[]
+  contributedProjects      Contribution[]
+  organizationMembers      OrganizationMember[]
+  receivedTimeOffRequests  TimeOffRequest[]         @relation("ApprovedByUser")
+  submittedTimeOffRequests TimeOffRequest[]         @relation("SubmittedByUser")
+  rewardTransactions       RewardTransaction[]
+  userCheckIns             UserCheckIn[]
+  checkInNotes             CheckInNote[]
+  projectBoards            ProjectBoard[]           @relation("ProjectBoardCreator")
+  assignedTasks            Task[]                   @relation("AssignedToUser")
+  createdTasks             Task[]                   @relation("CreatedByUser")
+  taskComments             TaskComment[]
+  githubIssues             GithubIssue[]
+  assignedGithubIssues     GithubIssue[]            @relation("AssignedGithubIssues")
+  followingOrganizations   UserFollowOrganization[]
+  wonStakingPools          StakingPool[]
+  stakingEntries           StakingEntry[]
+  stakingTransactions      StakingTransaction[]
+  joinRequests             JoinRequest[]
+
+  @@map("auth_user")
+}
+
+model Token {
+  key     String   @id @db.VarChar(40)
+  created DateTime @default(now())
+  userId  Int      @unique @map("user_id")
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("authtoken_token")
+}
+
+// ============================================
+// SUBSCRIPTION & ORGANIZATION MODELS
+// ============================================
+
+model Subscription {
+  id              Int      @id @default(autoincrement())
+  name            String   @db.VarChar(25)
+  chargePerMonth  Int      @map("charge_per_month")
+  huntPerDomain   Int      @map("hunt_per_domain")
+  numberOfDomains Int      @map("number_of_domains")
+  feature         Boolean  @default(true)
+  created         DateTime @default(now())
+
+  organizations Organization[]
+
+  @@map("subscription")
+}
+
+model Tag {
+  id      Int      @id @default(autoincrement())
+  name    String   @db.VarChar(255)
+  slug    String   @unique
+  created DateTime @default(now())
+
+  organizations Organization[]
+  domains       Domain[]       @relation("DomainTags")
+
+  @@map("tag")
+}
+
+// ============================================
+// INTEGRATION MODELS
+// ============================================
+
+enum IntegrationService {
+  SLACK
+}
+
+model Integration {
+  id             Int                 @id @default(autoincrement())
+  serviceName    IntegrationService? @map("service_name")
+  organizationId Int                 @map("organization_id")
+  createdAt      DateTime            @default(now()) @map("created_at")
+
+  organization        Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  slackIntegration    SlackIntegration?
+  linkedOrganizations Organization[]    @relation("OrganizationIntegrations")
+
+  @@map("integration")
+}
+
+model SlackIntegration {
+  id                 Int     @id @default(autoincrement())
+  integrationId      Int     @unique @map("integration_id")
+  botAccessToken     String? @map("bot_access_token") @db.VarChar(255)
+  workspaceName      String? @map("workspace_name") @db.VarChar(255)
+  defaultChannelName String? @map("default_channel_name") @db.VarChar(255)
+  defaultChannelId   String? @map("default_channel_id") @db.VarChar(255)
+  dailyUpdates       Boolean @default(false) @map("daily_updates")
+  dailyUpdateTime    Int?    @map("daily_update_time")
+  welcomeMessage     String? @map("welcome_message") @db.Text
+
+  integration Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+
+  @@map("slack_integration")
+}
+
+// ============================================
+// ORGANIZATION MODEL
+// ============================================
+
+enum OrganizationType {
+  ORGANIZATION
+  INDIVIDUAL
+  TEAM
+}
+
+model Organization {
+  id                     Int              @id @default(autoincrement())
+  adminId                Int?             @map("admin_id")
+  name                   String           @db.VarChar(255)
+  slug                   String           @unique @db.VarChar(255)
+  description            String?          @db.VarChar(500)
+  logo                   String?          @db.VarChar(100)
+  url                    String           @unique
+  email                  String?          @db.VarChar(254)
+  twitter                String?
+  matrixUrl              String?          @map("matrix_url")
+  slackUrl               String?          @map("slack_url")
+  discordUrl             String?          @map("discord_url")
+  gitterUrl              String?          @map("gitter_url")
+  zulipchatUrl           String?          @map("zulipchat_url")
+  elementUrl             String?          @map("element_url")
+  facebook               String?
+  created                DateTime         @default(now())
+  modified               DateTime         @updatedAt
+  subscriptionId         Int?             @map("subscription_id")
+  isActive               Boolean          @default(false) @map("is_active")
+  trademarkCount         Int              @default(0) @map("trademark_count")
+  trademarkCheckDate     DateTime?        @map("trademark_check_date")
+  teamPoints             Int              @default(0) @map("team_points")
+  tagline                String?          @db.VarChar(255)
+  license                String?          @db.VarChar(100)
+  categories             Json             @default("[]")
+  contributorGuidanceUrl String?          @map("contributor_guidance_url")
+  techTags               Json             @default("[]") @map("tech_tags")
+  topicTags              Json             @default("[]") @map("topic_tags")
+  sourceCode             String?          @map("source_code")
+  ideasLink              String?          @map("ideas_link")
+  reposUpdatedAt         DateTime?        @map("repos_updated_at")
+  type                   OrganizationType @default(ORGANIZATION)
+  checkInsEnabled        Boolean          @default(false) @map("check_ins_enabled")
+
+  // Address fields
+  addressLine1 String? @map("address_line_1") @db.VarChar(255)
+  addressLine2 String? @map("address_line_2") @db.VarChar(255)
+  city         String? @db.VarChar(100)
+  state        String? @db.VarChar(100)
+  country      String? @db.VarChar(100)
+  postalCode   String? @map("postal_code") @db.VarChar(20)
+
+  // Geographical coordinates
+  latitude  Decimal? @db.Decimal(9, 6)
+  longitude Decimal? @db.Decimal(9, 6)
+
+  // GitHub and GSOC fields
+  githubOrg   String? @map("github_org") @db.VarChar(255)
+  gsocYear    Int?    @map("gsoc_year")
+  gsocProfile String? @map("gsoc_profile")
+
+  // Additional Info
+  additionalInfo String? @map("additional_info") @db.Text
+
+  // Relations
+  admin                    User?                    @relation("AdminOrganizations", fields: [adminId], references: [id], onDelete: Cascade)
+  managers                 User[]                   @relation("ManagerOrganizations")
+  subscription             Subscription?            @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  tags                     Tag[]
+  integrations             Integration[]            @relation("OrganizationIntegrations")
+  organizationIntegrations Integration[]
+  domains                  Domain[]
+  organizationMembers      OrganizationMember[]
+  rewardTransactions       RewardTransaction[]
+  companyAdmins            CompanyAdmin[]
+  githubRepos              GithubRepo[]
+  followers                UserFollowOrganization[]
+  joinRequests             JoinRequest[]
+  trademarks               Trademark[]
+
+  @@map("organization")
+}
+
+model JoinRequest {
+  id         Int      @id @default(autoincrement())
+  teamId     Int      @map("team_id")
+  userId     Int      @map("user_id")
+  craetedAt  DateTime @default(now()) @map("created_at")
+  isAccepted Boolean  @default(false) @map("is_accepted")
+
+  team Organization @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ============================================
+// DOMAIN & BUG TRACKING MODELS
+// ============================================
+
+model Domain {
+  id                   Int       @id @default(autoincrement())
+  organizationId       Int?      @map("organization_id")
+  name                 String    @unique @db.VarChar(255)
+  url                  String
+  logo                 String?   @db.VarChar(100)
+  webshot              String?   @db.VarChar(100)
+  clicks               Int?
+  emailEvent           String?   @default("") @map("email_event") @db.VarChar(255)
+  color                String?   @db.VarChar(10)
+  github               String?   @db.VarChar(255)
+  email                String?   @db.VarChar(254)
+  twitter              String?   @db.VarChar(30)
+  facebook             String?
+  created              DateTime  @default(now())
+  modified             DateTime  @updatedAt
+  isActive             Boolean   @default(true) @map("is_active")
+  hasSecurityTxt       Boolean   @default(false) @map("has_security_txt")
+  securityTxtCheckedAt DateTime? @map("security_txt_checked_at")
+
+  // Relations
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  managers     User[]        @relation("DomainManagers")
+  issues       Issue[]
+  hunts        Hunt[]
+  tags         Tag[]         @relation("DomainTags")
+
+  @@index([organizationId], map: "domain_org_idx")
+  @@map("domain")
+}
+
+model Hunt {
+  id          Int       @id @default(autoincrement())
+  domainId    Int       @map("domain_id")
+  userId      Int       @map("user_id")
+  url         String
+  description String    @db.Text
+  prize       Int       @default(0)
+  created     DateTime  @default(now())
+  starts      DateTime
+  ends        DateTime?
+  plan        String?   @db.VarChar(10)
+  txnId       String?   @map("txn_id") @db.VarChar(50)
+  result      String?   @db.VarChar(20)
+  isPublished Boolean   @default(false) @map("is_published")
+
+  domain Domain @relation(fields: [domainId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("hunt")
+}
+
+// ===========================================
+// TRADEMARK MODELS
+// ===========================================
+
+model TrademarkOwner {
+  name                 String  @id @db.VarChar(255)
+  address1             String? @db.VarChar(255)
+  address2             String? @db.VarChar(255)
+  city                 String? @db.VarChar(100)
+  state                String? @db.VarChar(100)
+  country              String? @db.VarChar(100)
+  postalCode           String? @map("postcode") @db.VarChar(20)
+  ownerType            String? @map("owner_type") @db.VarChar(20)
+  ownerLabel           String? @map("owner_label") @db.VarChar(100)
+  legalEntityType      String? @map("legal_entity_type") @db.VarChar(20)
+  legalEntityTypeLabel String? @map("legal_entity_type_label") @db.VarChar(100)
+
+  trademarks           Trademark[]
+}
+
+model Trademark {
+  id                Int       @id @default(autoincrement())
+  keyword           String   @db.VarChar(255)
+  registrationNumber String? @map("registration_number") @db.VarChar(50)
+  serialNumber      String?  @map("serial_number") @db.VarChar(50)
+  statusLabel       String?  @map("status_label") @db.VarChar(50)
+  statusCode        String?  @map("status_code") @db.VarChar(20)
+  statusDate        DateTime? @map("status_date")
+  statusDefinition  String?  @map("status_definition") @db.VarChar(255)
+  filingDate        DateTime? @map("filing_date")
+  registrationDate  DateTime? @map("registration_date")
+  abandonmentDate   DateTime? @map("abandonment_date")
+  expirationDate    DateTime? @map("expiration_date")
+  description       String?  @db.Text
+  organizationId    Int?     @map("organization_id")
+
+  organization Organization?   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  owners        TrademarkOwner[]
+}
+
+// ============================================
+// ISSUE MODEL
+// ============================================
+
+model Issue {
+  id                   Int       @id @default(autoincrement())
+  userId               Int       @map("user_id")
+  url                  String
+  description          String    @db.Text
+  markdown_description String?   @map("markdown_description") @db.Text
+  domainId             Int?      @map("domain_id")
+  screenshot           String?   @db.VarChar(500)
+  closed_by            Int?
+  closed_date          DateTime?
+  cve_id               String?   @map("cve_id") @db.VarChar(100)
+  cve_score            Decimal?  @map("cve_score") @db.Decimal(3, 1)
+  created              DateTime  @default(now())
+  modified             DateTime  @updatedAt
+  views                Int       @default(0)
+  verified             Boolean   @default(false)
+  score                Int       @default(0)
+  status               String    @default("open") @db.VarChar(10)
+  user_agent           String?   @db.VarChar(255)
+  ocr                  String?   @db.Text
+  screenshot_width     Int?
+  screenshot_height    Int?
+  public               Boolean   @default(true)
+  team_members         String?   @db.Text
+  assignedId           Int?      @map("assigned_id")
+  githubUrl            String?   @map("github_url")
+  tokenValue           Int       @default(0) @map("token_value")
+  cveId                String?   @map("cve_id_v2") @db.VarChar(50)
+
+  // Relations
+  user         User              @relation("IssueCreator", fields: [userId], references: [id], onDelete: Cascade)
+  domain       Domain?           @relation(fields: [domainId], references: [id], onDelete: Cascade)
+  assignedUser User?             @relation("IssueAssignedUser", fields: [assignedId], references: [id])
+  screenshots  IssueScreenshot[]
+  labels       IssueLabel[]
+  activities   Activity[]
+  bids         Bid[]
+  winners      Winner[]
+  transactions Transaction[]
+
+  @@map("issue")
+}
+
+model IssueScreenshot {
+  id      Int    @id @default(autoincrement())
+  image   String @db.VarChar(500)
+  issueId Int    @map("issue_id")
+  userId  Int    @map("user_id")
+
+  issue Issue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("issue_screenshot")
+}
+
+model Label {
+  id    Int     @id @default(autoincrement())
+  name  String  @db.VarChar(255)
+  color String? @db.VarChar(10)
+
+  issueLabels IssueLabel[]
+
+  @@map("label")
+}
+
+model IssueLabel {
+  id      Int @id @default(autoincrement())
+  issueId Int @map("issue_id")
+  labelId Int @map("label_id")
+
+  issue Issue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  label Label @relation(fields: [labelId], references: [id], onDelete: Cascade)
+
+  @@unique([issueId, labelId])
+  @@map("issue_label")
+}
+
+// ============================================
+// POINTS & REWARDS MODELS
+// ============================================
+
+model Points {
+  id       Int      @id @default(autoincrement())
+  userId   Int      @map("user_id")
+  domainId Int?     @map("domain_id")
+  score    Int
+  created  DateTime @default(now())
+  modified DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("points")
+}
+
+model Winner {
+  id         Int      @id @default(autoincrement())
+  huntId     Int?     @map("hunt_id")
+  issueId    Int?     @map("issue_id")
+  userId     Int      @map("user_id")
+  prize      Int      @default(0)
+  prizeInBch Decimal? @map("prize_in_bch") @db.Decimal(10, 8)
+  prizeInBtc Decimal? @map("prize_in_btc") @db.Decimal(10, 8)
+
+  issue Issue? @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("winner")
+}
+
+// ============================================
+// PAYMENT & WALLET MODELS
+// ============================================
+
+model Payment {
+  id     Int     @id @default(autoincrement())
+  wallet String  @db.VarChar(100)
+  value  Int
+  active Boolean @default(true)
+  userId Int     @map("user_id")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("payment")
+}
+
+model Wallet {
+  id             Int      @id @default(autoincrement())
+  userId         Int      @unique @map("user_id")
+  currentBalance Decimal  @default(0.00) @map("current_balance") @db.Decimal(10, 2)
+  created        DateTime @default(now())
+  modified       DateTime @updatedAt
+
+  // Bitcoin address with validation
+  bitcoinAddress String? @map("bitcoin_address") @db.VarChar(255)
+
+  // Bitcoin Cash address with validation
+  bchAddress String? @map("bch_address") @db.VarChar(255)
+
+  // Ethereum address
+  ethAddress String? @map("eth_address") @db.VarChar(255)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("wallet")
+}
+
+// ============================================
+// USER PROFILE MODELS
+// ============================================
+
+model UserProfile {
+  id                   Int     @id @default(autoincrement())
+  userId               Int     @unique @map("user_id")
+  title                String? @db.VarChar(255)
+  role                 String  @default("user") @db.VarChar(10)
+  description          String? @db.Text
+  githubUrl            String? @map("github_url")
+  twitter              String? @db.VarChar(30)
+  website              String?
+  discordId            String? @map("discord_id") @db.VarChar(100)
+  isActive             Boolean @default(true) @map("is_active")
+  followersCount       Int     @default(0) @map("followers_count")
+  followingCount       Int     @default(0) @map("following_count")
+  issueCount           Int     @default(0) @map("issue_count")
+  upvotesCount         Int     @default(0) @map("upvotes_count")
+  issueUpvote          Int     @default(0) @map("issue_upvote")
+  winnerCount          Int     @default(0) @map("winner_count")
+  btcAddress           String? @map("btc_address") @db.VarChar(100)
+  bchAddress           String? @map("bch_address") @db.VarChar(100)
+  ethAddress           String? @map("eth_address") @db.VarChar(100)
+  avatar               String? @db.VarChar(100)
+  userAvatar           String? @map("user_avatar") @db.VarChar(1000)
+  subscribed           Boolean @default(false)
+  follows              Json    @default("[]")
+  issuesHidden         Json    @default("[]") @map("issues_hidden")
+  hiddenIssues         Json    @default("[]") @map("hidden_issues")
+  apiKey               String? @unique @map("api_key") @db.VarChar(64)
+  stripeCustomerId     String? @map("stripe_customer_id") @db.VarChar(255)
+  stripeSubscriptionId String? @map("stripe_subscription_id") @db.VarChar(255)
+  githubId             String? @map("github_id") @db.VarChar(50)
+  discordActive        Boolean @default(false) @map("discord_active")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_profile")
+}
+
+model ContributorStats {
+  id             Int      @id @default(autoincrement())
+  userId         Int      @map("user_id")
+  openIssues     Int      @default(0) @map("open_issues")
+  closedIssues   Int      @default(0) @map("closed_issues")
+  totalScore     Int      @default(0) @map("total_score")
+  rank           Int      @default(0)
+  lastCalculated DateTime @default(now()) @map("last_calculated")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId])
+  @@map("contributor_stats")
+}
+
+// ============================================
+// INVITE & REFERRAL MODELS
+// ============================================
+
+model Invite {
+  id             Int     @id @default(autoincrement())
+  referralCode   String  @unique @map("referral_code") @db.VarChar(255)
+  invitingUserId Int     @map("inviting_user_id")
+  invitedUserId  Int?    @map("invited_user_id")
+  pointsAwarded  Boolean @default(false) @map("points_awarded")
+
+  invitingUser User  @relation("InvitingUser", fields: [invitingUserId], references: [id], onDelete: Cascade)
+  invitedUser  User? @relation("InvitedUser", fields: [invitedUserId], references: [id], onDelete: Cascade)
+
+  @@map("invite")
+}
+
+model InviteFriend {
+  id           Int    @id @default(autoincrement())
+  email        String @db.VarChar(254)
+  referralCode String @map("referral_code") @db.VarChar(255)
+  userId       Int    @map("user_id")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("invite_friend")
+}
+
+// ============================================
+// IP & MONITORING MODELS
+// ============================================
+
+model IP {
+  id        Int      @id @default(autoincrement())
+  address   String   @unique @db.VarChar(50)
+  userId    Int?     @map("user_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User? @relation("IPReporter", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("ip")
+}
+
+model Monitor {
+  id      Int    @id @default(autoincrement())
+  url     String
+  keyword String @db.VarChar(255)
+  userId  Int    @map("user_id")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("monitor")
+}
+
+// ============================================
+// ACTIVITY & SOCIAL MODELS
+// ============================================
+
+model Activity {
+  id           Int      @id @default(autoincrement())
+  title        String   @db.VarChar(255)
+  created      DateTime @default(now())
+  modified     DateTime @updatedAt
+  activityType String   @map("activity_type") @db.VarChar(255)
+  userId       Int      @map("user_id")
+  issueId      Int?     @map("issue_id")
+
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  issue Issue? @relation(fields: [issueId], references: [id], onDelete: Cascade)
+
+  @@map("activity")
+}
+
+model Bid {
+  id       Int      @id @default(autoincrement())
+  userId   Int      @map("user_id")
+  issueId  Int      @map("issue_id")
+  created  DateTime @default(now())
+  modified DateTime @updatedAt
+  amount   Decimal  @db.Decimal(10, 2)
+  status   String   @default("pending") @db.VarChar(20)
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  issue Issue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+
+  @@map("bid")
+}
+
+// ============================================
+// TRANSACTION MODELS
+// ============================================
+
+model Transaction {
+  id            Int      @id @default(autoincrement())
+  created       DateTime @default(now())
+  transactionId String   @map("transaction_id") @db.VarChar(100)
+  issueId       Int?     @map("issue_id")
+  userId        Int      @map("user_id")
+  value         Decimal  @db.Decimal(10, 2)
+
+  issue Issue? @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("transaction")
+}
+
+// ============================================
+// COMPANY & PROJECT MODELS
+// ============================================
+
+model Company {
+  id           Int      @id @default(autoincrement())
+  admin        String   @db.VarChar(255)
+  managers     Json     @default("[]")
+  name         String   @db.VarChar(255)
+  logo         String?  @db.VarChar(100)
+  url          String   @unique
+  email        String?  @db.VarChar(254)
+  twitter      String?
+  created      DateTime @default(now())
+  modified     DateTime @updatedAt
+  subscription String?  @db.VarChar(255)
+
+  projects CompanyProject[]
+  admins   CompanyAdmin[]
+
+  @@map("company")
+}
+
+model CompanyAdmin {
+  id             Int    @id @default(autoincrement())
+  role           String @db.VarChar(20)
+  companyId      Int?   @map("company_id")
+  organizationId Int?   @map("organization_id")
+  userId         Int    @map("user_id")
+
+  company      Company?      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("company_admin")
+}
+
+model CompanyProject {
+  id          Int     @id @default(autoincrement())
+  name        String  @db.VarChar(255)
+  slug        String  @unique @db.VarChar(255)
+  description String? @db.Text
+  githubUrl   String? @map("github_url")
+  companyId   Int?    @map("company_id")
+
+  company Company?               @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  members CompanyProjectMember[]
+
+  @@map("company_project")
+}
+
+model CompanyProjectMember {
+  id        Int    @id @default(autoincrement())
+  projectId Int    @map("project_id")
+  userId    Int    @map("user_id")
+  role      String @db.VarChar(20)
+
+  project CompanyProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+  @@map("company_project_member")
+}
+
+// ============================================
+// PROJECT CONTRIBUTION MODELS
+// ============================================
+
+model Project {
+  id          Int      @id @default(autoincrement())
+  name        String   @db.VarChar(255)
+  slug        String   @unique @db.VarChar(255)
+  description String?  @db.Text
+  createdBy   Int      @map("created_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  creator       User            @relation("ProjectCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+  members       ProjectMember[]
+  contributions Contribution[]
+  bountyClaims  BountyClaim[]
+  projectBoards ProjectBoard[]
+
+  @@map("project")
+}
+
+model ProjectMember {
+  id        Int      @id @default(autoincrement())
+  projectId Int      @map("project_id")
+  userId    Int      @map("user_id")
+  role      String   @default("member") @db.VarChar(20)
+  joinedAt  DateTime @default(now()) @map("joined_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+  @@map("project_member")
+}
+
+model Contribution {
+  id               Int      @id @default(autoincrement())
+  projectId        Int      @map("project_id")
+  userId           Int      @map("user_id")
+  contributionType String   @map("contribution_type") @db.VarChar(50)
+  description      String   @db.Text
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("contribution")
+}
+
+model ProjectContribution {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @map("user_id")
+  githubUrl String   @map("github_url")
+  status    String   @default("pending") @db.VarChar(20)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("project_contribution")
+}
+
+// ============================================
+// BACON TOKEN MODELS
+// ============================================
+
+model BaconToken {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique @db.VarChar(50)
+  symbol      String   @db.VarChar(10)
+  totalSupply Decimal  @default(1000000) @map("total_supply") @db.Decimal(18, 2)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("bacon_token")
+}
+
+model BaconEarning {
+  id           Int      @id @default(autoincrement())
+  userId       Int      @unique @map("user_id")
+  tokensEarned Decimal  @default(0) @map("tokens_earned") @db.Decimal(18, 2)
+  lastUpdated  DateTime @updatedAt @map("last_updated")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("bacon_earning")
+}
+
+model BaconDistribution {
+  id            Int      @id @default(autoincrement())
+  category      String   @db.VarChar(50)
+  amount        Decimal  @db.Decimal(18, 2)
+  distributedAt DateTime @default(now()) @map("distributed_at")
+
+  @@map("bacon_distribution")
+}
+
+// ============================================
+// BOUNTY MODELS
+// ============================================
+
+model BountyClaim {
+  id        Int      @id @default(autoincrement())
+  projectId Int      @map("project_id")
+  userId    Int      @map("user_id")
+  amount    Decimal  @db.Decimal(10, 2)
+  status    String   @default("pending") @db.VarChar(20)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("bounty_claim")
+}
+
+// ============================================
+// ORGANIZATION MEMBER MODELS
+// ============================================
+
+model OrganizationMember {
+  id             Int      @id @default(autoincrement())
+  organizationId Int      @map("organization_id")
+  userId         Int      @map("user_id")
+  role           String   @default("member") @db.VarChar(20)
+  isActive       Boolean  @default(true) @map("is_active")
+  joinedAt       DateTime @default(now()) @map("joined_at")
+
+  // HR/time tracking fields
+  startDate  DateTime? @map("start_date")
+  endDate    DateTime? @map("end_date")
+  jobTitle   String?   @map("job_title") @db.VarChar(100)
+  department String?   @db.VarChar(100)
+  employeeId String?   @map("employee_id") @db.VarChar(50)
+
+  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  timeOffRequests TimeOffRequest[]
+
+  @@unique([organizationId, userId])
+  @@map("organization_member")
+}
+
+// ============================================
+// TIME OFF & HR MODELS
+// ============================================
+
+model TimeOffRequest {
+  id            Int       @id @default(autoincrement())
+  memberId      Int       @map("member_id")
+  requestType   String    @map("request_type") @db.VarChar(50)
+  startDate     DateTime  @map("start_date")
+  endDate       DateTime  @map("end_date")
+  reason        String?   @db.Text
+  status        String    @default("pending") @db.VarChar(20)
+  submittedAt   DateTime  @default(now()) @map("submitted_at")
+  approvedById  Int?      @map("approved_by_id")
+  approvedAt    DateTime? @map("approved_at")
+  submittedById Int       @map("submitted_by_id")
+
+  member      OrganizationMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  approvedBy  User?              @relation("ApprovedByUser", fields: [approvedById], references: [id])
+  submittedBy User               @relation("SubmittedByUser", fields: [submittedById], references: [id], onDelete: Cascade)
+
+  @@map("time_off_request")
+}
+
+// ============================================
+// REWARD TRANSACTION MODELS
+// ============================================
+
+model RewardTransaction {
+  id              Int      @id @default(autoincrement())
+  organizationId  Int?     @map("organization_id")
+  userId          Int      @map("user_id")
+  rewardType      String   @map("reward_type") @db.VarChar(50)
+  amount          Decimal  @db.Decimal(10, 2)
+  description     String?  @db.Text
+  transactionDate DateTime @default(now()) @map("transaction_date")
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("reward_transaction")
+}
+
+// ============================================
+// CHECK-IN MODELS
+// ============================================
+
+model UserCheckIn {
+  id           Int      @id @default(autoincrement())
+  userId       Int      @map("user_id")
+  timestamp    DateTime @default(now())
+  mood         String?  @db.VarChar(20)
+  productivity Int?
+  notes        String?  @db.Text
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  checkInNotes CheckInNote[]
+
+  @@map("user_check_in")
+}
+
+model CheckInNote {
+  id        Int      @id @default(autoincrement())
+  checkInId Int      @map("check_in_id")
+  userId    Int      @map("user_id")
+  note      String   @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+
+  checkIn UserCheckIn @relation(fields: [checkInId], references: [id], onDelete: Cascade)
+  user    User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("check_in_note")
+}
+
+// ============================================
+// PROJECT BOARD & TASK MODELS
+// ============================================
+
+model ProjectBoard {
+  id          Int      @id @default(autoincrement())
+  projectId   Int      @map("project_id")
+  name        String   @db.VarChar(255)
+  description String?  @db.Text
+  createdBy   Int      @map("created_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  project Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  creator User          @relation("ProjectBoardCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+  columns BoardColumn[]
+
+  @@map("project_board")
+}
+
+model BoardColumn {
+  id       Int    @id @default(autoincrement())
+  boardId  Int    @map("board_id")
+  name     String @db.VarChar(100)
+  position Int
+
+  board ProjectBoard @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  tasks Task[]
+
+  @@map("board_column")
+}
+
+model Task {
+  id          Int       @id @default(autoincrement())
+  columnId    Int       @map("column_id")
+  title       String    @db.VarChar(255)
+  description String?   @db.Text
+  assignedTo  Int?      @map("assigned_to")
+  createdBy   Int       @map("created_by")
+  priority    String    @default("medium") @db.VarChar(20)
+  status      String    @default("todo") @db.VarChar(20)
+  dueDate     DateTime? @map("due_date")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  position    Int
+
+  column       BoardColumn   @relation(fields: [columnId], references: [id], onDelete: Cascade)
+  assignedUser User?         @relation("AssignedToUser", fields: [assignedTo], references: [id])
+  creator      User          @relation("CreatedByUser", fields: [createdBy], references: [id], onDelete: Cascade)
+  comments     TaskComment[]
+
+  @@map("task")
+}
+
+model TaskComment {
+  id        Int      @id @default(autoincrement())
+  taskId    Int      @map("task_id")
+  userId    Int      @map("user_id")
+  comment   String   @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("task_comment")
+}
+
+// ============================================
+// GITHUB INTEGRATION MODELS
+// ============================================
+
+model GithubRepo {
+  id             Int       @id @default(autoincrement())
+  organizationId Int       @map("organization_id")
+  repoName       String    @map("repo_name") @db.VarChar(255)
+  repoUrl        String    @map("repo_url")
+  stars          Int       @default(0)
+  forks          Int       @default(0)
+  language       String?   @db.VarChar(50)
+  lastSyncedAt   DateTime? @map("last_synced_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  issues       GithubIssue[]
+
+  @@unique([organizationId, repoName])
+  @@map("github_repo")
+}
+
+model GithubIssue {
+  id          Int       @id @default(autoincrement())
+  repoId      Int       @map("repo_id")
+  issueNumber Int       @map("issue_number")
+  title       String    @db.VarChar(500)
+  body        String?   @db.Text
+  state       String    @db.VarChar(20)
+  createdById Int?      @map("created_by_id")
+  createdAt   DateTime  @map("created_at")
+  updatedAt   DateTime  @map("updated_at")
+  closedAt    DateTime? @map("closed_at")
+  labels      Json      @default("[]")
+
+  repo      GithubRepo @relation(fields: [repoId], references: [id], onDelete: Cascade)
+  createdBy User?      @relation(fields: [createdById], references: [id])
+  assignees User[]     @relation("AssignedGithubIssues")
+
+  @@unique([repoId, issueNumber])
+  @@map("github_issue")
+}
+
+// ============================================
+// FOLLOW ORGANIZATION MODELS
+// ============================================
+
+model UserFollowOrganization {
+  id             Int      @id @default(autoincrement())
+  userId         Int      @map("user_id")
+  organizationId Int      @map("organization_id")
+  followedAt     DateTime @default(now()) @map("followed_at")
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, organizationId])
+  @@map("user_follow_organization")
+}
+
+// ============================================
+// STAKING POOL MODELS (New BACON Gamification)
+// ============================================
+
+model StakingPool {
+  id              Int       @id @default(autoincrement())
+  name            String    @db.VarChar(255)
+  description     String?   @db.Text
+  stakeAmount     Decimal   @map("stake_amount") @db.Decimal(10, 2)
+  maxParticipants Int       @map("max_participants")
+  challengeType   String    @map("challenge_type") @db.VarChar(50)
+  status          String    @default("open") @db.VarChar(20)
+  winnerId        Int?      @map("winner_id")
+  startDate       DateTime  @map("start_date")
+  endDate         DateTime  @map("end_date")
+  completedAt     DateTime? @map("completed_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  winner       User?                @relation(fields: [winnerId], references: [id])
+  entries      StakingEntry[]
+  transactions StakingTransaction[]
+
+  @@map("staking_pool")
+}
+
+model StakingEntry {
+  id                 Int       @id @default(autoincrement())
+  userId             Int       @map("user_id")
+  poolId             Int       @map("pool_id")
+  stakedAmount       Decimal   @map("staked_amount") @db.Decimal(10, 2)
+  actualReward       Decimal   @default(0.00) @map("actual_reward") @db.Decimal(10, 2)
+  status             String    @default("active") @db.VarChar(20)
+  challengeCompleted Boolean   @default(false) @map("challenge_completed")
+  completionTime     DateTime? @map("completion_time")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  user User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pool StakingPool @relation(fields: [poolId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, poolId])
+  @@map("staking_entry")
+}
+
+model StakingTransaction {
+  id              Int      @id @default(autoincrement())
+  userId          Int      @map("user_id")
+  poolId          Int      @map("pool_id")
+  transactionType String   @map("transaction_type") @db.VarChar(20)
+  amount          Decimal  @db.Decimal(10, 2)
+  description     String   @db.Text
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  user User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pool StakingPool @relation(fields: [poolId], references: [id], onDelete: Cascade)
+
+  @@map("staking_transaction")
+}
