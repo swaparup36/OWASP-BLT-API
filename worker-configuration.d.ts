@@ -7,6 +7,8 @@ declare namespace Cloudflare {
 	}
 	interface Env {
 		ASSETS: Fetcher;
+		SCREENSHOTS_BUCKET?: R2Bucket;
+		JWT_SECRET?: string;
 	}
 }
 interface CloudflareBindings extends Cloudflare.Env {}

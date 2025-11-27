@@ -333,6 +333,7 @@ model Organization {
   teamChallenges Challenge[] @relation("ChallengeTeamParticipants")
   hackathons Hackathon[]
   hackathonSponsors HackathonSponsor[]
+  timeLogs                 TimeLog[]
 
   @@map("organization")
 }
@@ -714,6 +715,7 @@ model Blocked {
 
 model TimeLog {
   id Int @id @default(autoincrement())
+  organizationId Int? @map("organization_id")
   userId Int @map("user_id")
   startTime DateTime? @map("start_time")
   endTime DateTime? @map("end_time")
@@ -722,6 +724,7 @@ model TimeLog {
   created DateTime @default(now())
 
   user    User  @relation("UserTimeLogs", fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 }
 
 model ActivityLog {

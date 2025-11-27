@@ -4,15 +4,33 @@
  */
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "frosty-sea-d23e",
+	"name": "owasp-blt-api",
 	"main": "src/index.ts",
 	"compatibility_date": "2025-11-19",
+	"node_compat": true,
 	"assets": {
 		"binding": "ASSETS",
 		"directory": "./public"
 	},
 	"observability": {
 		"enabled": true
+	},
+	/**
+	 * R2 Storage for screenshots
+	 */
+	"r2_buckets": [
+		{
+			"binding": "SCREENSHOTS_BUCKET",
+			"bucket_name": "owasp-blt-screenshots"
+		}
+	],
+	/**
+	 * Environment Variables (non-sensitive)
+	 */
+	"vars": {
+		"ENVIRONMENT": "production",
+		"DOMAIN_NAME": "api.blt.owasp.org",
+		"PORT": "8000"
 	}
 	/**
 	 * Smart Placement
