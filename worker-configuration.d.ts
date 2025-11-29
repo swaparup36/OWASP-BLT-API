@@ -8,7 +8,16 @@ declare namespace Cloudflare {
 	interface Env {
 		ASSETS: Fetcher;
 		SCREENSHOTS_BUCKET?: R2Bucket;
+		BLT_BUCKET?: R2Bucket;
+		BUCKET?: R2Bucket;
 		JWT_SECRET?: string;
+		ORD_SERVER_URL?: string;
+		SLACK_CLIENT_ID?: string;
+		SLACK_CLIENT_SECRET?: string;
+		APP_HOST?: string;
+		OAUTH_REDIRECT_URL?: string;
+		FRONTEND_URL?: string;
+		GITHUB_TOKEN?: string;
 	}
 }
 interface CloudflareBindings extends Cloudflare.Env {}

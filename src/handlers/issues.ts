@@ -291,7 +291,6 @@ export async function listIssues(c: IssueContext) {
 	}
 }
 
-
 // Retrieve a single issue by ID
 export async function retrieveIssue(c: IssueContext) {
 	try {
@@ -471,6 +470,178 @@ export async function createIssue(c: Context) {
 	} catch (error) {
 		console.error("Error creating issue:", error);
 		return c.json({ error: "Failed to create issue" }, 500);
+	}
+}
+
+// Get like count for an issue
+export async function getIssueLikes(c: IssueContext) {
+	try {
+		const issueId = parseInt(c.req.param("id"));
+
+		if (isNaN(issueId)) {
+			return c.json({ error: "Invalid issue ID" }, 400);
+		}
+
+		// Check if issue exists
+		const issue = await prisma.issue.findUnique({
+			where: { id: issueId },
+			select: { id: true },
+		});
+
+		if (!issue) {
+			return c.json({ error: "Issue not found" }, 404);
+		}
+
+		// Count upvotes
+		const likesCount = await prisma.userProfile.count({
+			where: {
+				issueUpvoted: {
+					some: {
+						id: issueId,
+					},
+				},
+			},
+		});
+
+		return c.json({ likes: likesCount });
+	} catch (error) {
+		console.error("Error getting issue likes:", error);
+		return c.json({ error: "Failed to get issue likes" }, 500);
+	}
+}
+
+// Like or unlike an issue (toggle)
+export async function likeIssue(c: IssueContext) {
+	try {
+		const userId = c.get("userId");
+
+		if (!userId) {
+			return c.json({ error: "Authentication required" }, 401);
+		}
+
+		const issueId = parseInt(c.req.param("id"));
+
+		if (isNaN(issueId)) {
+			return c.json({ error: "Invalid issue ID" }, 400);
+		}
+
+		// Check if issue exists
+		const issue = await prisma.issue.findUnique({
+			where: { id: issueId },
+			include: {
+				user: {
+					select: {
+						id: true,
+						username: true,
+						email: true,
+					},
+				},
+			},
+		});
+
+		if (!issue) {
+			return c.json({ error: "Issue not found" }, 404);
+		}
+
+		// Get or create user profile
+		let userProfile = await prisma.userProfile.findUnique({
+			where: { userId: parseInt(userId) },
+			include: {
+				issueUpvoted: {
+					where: { id: issueId },
+					select: { id: true },
+				},
+			},
+		});
+
+		if (!userProfile) {
+			// Create user profile if it doesn't exist
+			userProfile = await prisma.userProfile.create({
+				data: {
+					userId: parseInt(userId),
+				},
+				include: {
+					issueUpvoted: {
+						where: { id: issueId },
+						select: { id: true },
+					},
+				},
+			});
+		}
+
+		// Check if user has already upvoted
+		const hasUpvoted = userProfile.issueUpvoted.length > 0;
+
+		if (hasUpvoted) {
+			// Remove upvote (unlike)
+			await prisma.userProfile.update({
+				where: { userId: parseInt(userId) },
+				data: {
+					issueUpvoted: {
+						disconnect: { id: issueId },
+					},
+				},
+			});
+
+			return c.json({ issue: "unliked" });
+		} else {
+			// Add upvote (like)
+			await prisma.userProfile.update({
+				where: { userId: parseInt(userId) },
+				data: {
+					issueUpvoted: {
+						connect: { id: issueId },
+					},
+				},
+			});
+
+			const likerUser = await prisma.user.findUnique({
+				where: { id: parseInt(userId) },
+				select: {
+					username: true,
+					email: true,
+				},
+			});
+
+			// Send email notification if the issue has an owner and it's not the same user
+			if (issue.user && issue.user.email && issue.userId !== parseInt(userId)) {
+				try {
+					// TODO: Implement email sending functionality
+					// In a Cloudflare Worker, you could use services like:
+					// - SendGrid API
+					// - Mailgun API
+					// - Resend API
+					// - SES (AWS Simple Email Service)
+					
+					// Example structure for future implementation:
+					// await sendEmail({
+					//   to: issue.user.email,
+					//   from: c.env.EMAIL_FROM,
+					//   subject: "Your issue got an upvote!!",
+					//   html: renderEmailTemplate({
+					//     likerUser: likerUser?.username || "Anonymous",
+					//     likedUser: issue.user.username,
+					//     issuePk: issue.id,
+					//   }),
+					// });
+
+					console.log("Email notification would be sent:", {
+						to: issue.user.email,
+						likerUser: likerUser?.username,
+						likedUser: issue.user.username,
+						issuePk: issue.id,
+					});
+				} catch (emailError) {
+					// Log email error but don't fail the request
+					console.error("Failed to send email notification:", emailError);
+				}
+			}
+
+			return c.json({ issue: "liked" });
+		}
+	} catch (error) {
+		console.error("Error liking/unliking issue:", error);
+		return c.json({ error: "Failed to process like/unlike request" }, 500);
 	}
 }
 

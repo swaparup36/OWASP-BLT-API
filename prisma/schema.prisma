@@ -582,17 +582,17 @@ model Winner {
   id         Int      @id @default(autoincrement())
   issueId   Int?     @map("issue_id")
   huntId     Int?     @map("hunt_id")
-  winnerId   Int      @map("winner_id")
-  runnerId   Int      @map("runner_id")
-  secondRunnerId Int      @map("second_runner_id")
+  winnerId   Int?      @map("winner_id")
+  runnerId   Int?      @map("runner_id")
+  secondRunnerId Int?      @map("second_runner_id")
   prizeDistributed    Boolean  @default(false) @map("prize_distributed")
   prize      Int      @default(0)
   prizeAmount     Decimal   @default(0) @db.Decimal(6, 2) @map("prize_amount")
 
   hunt  Hunt?  @relation(fields: [huntId], references: [id], onDelete: Cascade)
-  winner  User   @relation("WinnerUser", fields: [winnerId], references: [id], onDelete: Cascade)
-  runner  User   @relation("RunnerUser", fields: [runnerId], references: [id], onDelete: Cascade)
-  secondRunner  User   @relation("SecondRunnerUser", fields: [secondRunnerId], references: [id], onDelete: Cascade)
+  winner  User?   @relation("WinnerUser", fields: [winnerId], references: [id], onDelete: Cascade)
+  runner  User?   @relation("RunnerUser", fields: [runnerId], references: [id], onDelete: Cascade)
+  secondRunner  User?   @relation("SecondRunnerUser", fields: [secondRunnerId], references: [id], onDelete: Cascade)
   issue Issue? @relation(fields: [issueId], references: [id], onDelete: Cascade)
 
   @@map("winner")
@@ -1881,7 +1881,7 @@ model Lecture {
   id Int @id @default(autoincrement())
   instructorId Int @map("instructor_id")
   title String @db.VarChar(200)
-  sectionId Int @map("section_id")
+  sectionId Int? @map("section_id")
   description String? @db.Text
   contentType LectureContentType @map("content_type")
   videoUrl String? @map("video_url")
@@ -1894,7 +1894,7 @@ model Lecture {
   order Int
 
   instructor User @relation("LectureInstructor", fields: [instructorId], references: [id], onDelete: Cascade)
-  section   Section @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  section   Section? @relation(fields: [sectionId], references: [id], onDelete: Cascade)
   lectureStatuses LectureStatus[]
 }
 
@@ -2215,5 +2215,38 @@ model ReminderSettings {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ============================================
+// TEMPLATE MANAGEMENT MODELS
+// ============================================
+
+enum TemplateCategory {
+  MAIN
+  AUTH
+  PROFILE
+  ISSUE
+  DOMAIN
+  ORGANIZATION
+  PROJECT
+  OTHER
+}
+
+model Template {
+  id Int @id @default(autoincrement())
+  name String @unique @db.VarChar(255)
+  path String @db.VarChar(500)
+  category TemplateCategory @default(OTHER)
+  description String? @db.Text
+  hasSidenav Boolean @default(false) @map("has_sidenav")
+  extendsBase Boolean @default(false) @map("extends_base")
+  hasStyleTags Boolean @default(false) @map("has_style_tags")
+  url String? @db.VarChar(500)
+  viewCount Int @default(0) @map("view_count")
+  modifiedAt DateTime @map("modified_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("template")
 }
 
